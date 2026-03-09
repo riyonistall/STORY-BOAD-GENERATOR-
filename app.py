@@ -115,10 +115,18 @@ def generate():
     try:
         client = anthropic.Anthropic(api_key=api_key)
 
-        response = client.messages.parse(
+        response = client.messages.create(
             model="claude-opus-4-6",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
+            tools=[
+                {
+                    "name": "create_storyboard",
+                    "description": "Create a structured storyboard from the script",
+                    "input_schema": Storyboard.model_json_schema(),
+                }
+            ],
+            tool_choice={"type": "tool", "name": "create_storyboard"},
             messages=[
                 {
                     "role": "user",
@@ -129,20 +137,15 @@ def generate():
                     ),
                 }
             ],
-            output_format=Storyboard,
         )
 
-        if response.stop_reason == "refusal":
-            return (
-                jsonify(
-                    {
-                        "error": "Content was refused. Please review your script for inappropriate content."
-                    }
-                ),
-                422,
-            )
+        tool_block = next(
+            (b for b in response.content if b.type == "tool_use"), None
+        )
+        if not tool_block:
+            return jsonify({"error": "No storyboard was generated."}), 500
 
-        storyboard = response.parsed_output
+        storyboard = Storyboard.model_validate(tool_block.input)
         return jsonify(storyboard.model_dump())
 
     except anthropic.AuthenticationError:
