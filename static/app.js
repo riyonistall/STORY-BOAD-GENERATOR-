@@ -105,16 +105,14 @@ function createCard(shot) {
   /* Sketch frame */
   const frame = el("div", "card-frame");
   const frameInner = el("div", "card-frame-inner");
-  frameInner.appendChild(el("div", "frame-camera-icon", "🎥"));
-  frameInner.appendChild(
-    el(
-      "div",
-      "frame-camera-label",
-      `${shot.camera_type}\n${shot.camera_angle}`
-    )
-  );
+  frameInner.appendChild(el("div", "frame-camera-icon", "⏳"));
+  const cameraLabel = el("div", "frame-camera-label", "Generating sketch…");
+  frameInner.appendChild(cameraLabel);
   frame.appendChild(frameInner);
   card.appendChild(frame);
+
+  /* Kick off image generation asynchronously */
+  fetchShotImage(shot.sketch_prompt, frame, frameInner, cameraLabel);
 
   /* Body */
   const body = el("div", "card-body");
@@ -149,6 +147,32 @@ function createCard(shot) {
 
   card.appendChild(body);
   return card;
+}
+
+/* ── Image generation ─────────────────────────────────────── */
+async function fetchShotImage(prompt, frame, frameInner, cameraLabel) {
+  try {
+    const res = await fetch("/generate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.image_url) throw new Error(data.error || "No image returned");
+
+    const img = document.createElement("img");
+    img.src = data.image_url;
+    img.alt = "Storyboard sketch";
+    img.className = "frame-sketch-img";
+    img.onload = () => {
+      frameInner.innerHTML = "";
+      frameInner.appendChild(img);
+      frame.classList.add("has-image");
+    };
+  } catch {
+    cameraLabel.textContent = "Sketch unavailable";
+    frameInner.querySelector(".frame-camera-icon").textContent = "🎥";
+  }
 }
 
 /* ── Helpers ──────────────────────────────────────────────── */

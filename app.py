@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import anthropic
+import fal_client
 from pydantic import BaseModel, Field
 from typing import List
 import os
@@ -164,6 +165,45 @@ def generate():
         return jsonify({"error": f"API error: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"error": f"Error generating storyboard: {str(e)}"}), 500
+
+
+@app.route("/generate-image", methods=["POST"])
+def generate_image():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request body"}), 400
+
+    prompt = data.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "prompt is required"}), 400
+
+    fal_key = os.environ.get("FAL_KEY")
+    if not fal_key:
+        return jsonify({"error": "FAL_KEY environment variable is not set"}), 500
+
+    os.environ["FAL_KEY"] = fal_key
+
+    try:
+        result = fal_client.run(
+            "fal-ai/flux/schnell",
+            arguments={
+                "prompt": (
+                    "rough pencil storyboard sketch, hand-drawn animation frame, "
+                    "charcoal lines, minimal shading, monochrome, "
+                    "cinematic framing, expressive gestures, "
+                    "sketch construction lines visible, "
+                    "soft grey watercolor wash background — "
+                    + prompt
+                ),
+                "image_size": "landscape_4_3",
+                "num_inference_steps": 4,
+                "num_images": 1,
+            },
+        )
+        image_url = result["images"][0]["url"]
+        return jsonify({"image_url": image_url})
+    except Exception as e:
+        return jsonify({"error": f"Image generation failed: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
