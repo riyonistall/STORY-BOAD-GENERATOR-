@@ -1,8 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import anthropic
-import base64
-from google import genai
-from google.genai import types
+import requests
+import time
 from pydantic import BaseModel, Field
 from typing import List
 import os
@@ -179,12 +178,15 @@ def generate_image():
     if not prompt:
         return jsonify({"error": "prompt is required"}), 400
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        return jsonify({"error": "GEMINI_API_KEY environment variable is not set"}), 500
+    freepik_key = os.environ.get("FREEPIK_API_KEY")
+    if not freepik_key:
+        return jsonify({"error": "FREEPIK_API_KEY environment variable is not set"}), 500
 
     try:
-        client = genai.Client(api_key=gemini_key)
+        headers = {
+            "x-freepik-api-key": freepik_key,
+            "Content-Type": "application/json",
+        }
         full_prompt = (
             "rough pencil storyboard sketch, hand-drawn animation frame, "
             "charcoal lines, minimal shading, monochrome, "
@@ -193,17 +195,37 @@ def generate_image():
             "soft grey watercolor wash background — "
             + prompt
         )
-        response = client.models.generate_images(
-            model="imagen-3.0-generate-002",
-            prompt=full_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="4:3",
-            ),
+        payload = {
+            "prompt": full_prompt,
+            "aspect_ratio": "widescreen_16_9",
+            "resolution": "1k",
+            "model": "fluid",
+        }
+        post_resp = requests.post(
+            "https://api.freepik.com/v1/ai/mystic",
+            json=payload,
+            headers=headers,
+            timeout=30,
         )
-        image_bytes = response.generated_images[0].image.image_bytes
-        image_b64 = base64.b64encode(image_bytes).decode()
-        return jsonify({"image_url": f"data:image/png;base64,{image_b64}"})
+        post_resp.raise_for_status()
+        task_id = post_resp.json()["data"]["task_id"]
+
+        # Poll until complete (max 60 seconds)
+        for _ in range(30):
+            time.sleep(2)
+            poll_resp = requests.get(
+                f"https://api.freepik.com/v1/ai/mystic/{task_id}",
+                headers=headers,
+                timeout=15,
+            )
+            poll_resp.raise_for_status()
+            result = poll_resp.json()["data"]
+            if result["status"] == "COMPLETED":
+                return jsonify({"image_url": result["generated"][0]})
+            if result["status"] == "FAILED":
+                return jsonify({"error": "Freepik image generation failed"}), 500
+
+        return jsonify({"error": "Image generation timed out"}), 504
     except Exception as e:
         return jsonify({"error": f"Image generation failed: {str(e)}"}), 500
 
