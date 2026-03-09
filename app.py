@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, jsonify
 import anthropic
-import fal_client
+import base64
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 from typing import List
 import os
@@ -177,31 +179,31 @@ def generate_image():
     if not prompt:
         return jsonify({"error": "prompt is required"}), 400
 
-    fal_key = os.environ.get("FAL_KEY")
-    if not fal_key:
-        return jsonify({"error": "FAL_KEY environment variable is not set"}), 500
-
-    os.environ["FAL_KEY"] = fal_key
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        return jsonify({"error": "GEMINI_API_KEY environment variable is not set"}), 500
 
     try:
-        result = fal_client.run(
-            "fal-ai/flux/schnell",
-            arguments={
-                "prompt": (
-                    "rough pencil storyboard sketch, hand-drawn animation frame, "
-                    "charcoal lines, minimal shading, monochrome, "
-                    "cinematic framing, expressive gestures, "
-                    "sketch construction lines visible, "
-                    "soft grey watercolor wash background — "
-                    + prompt
-                ),
-                "image_size": "landscape_4_3",
-                "num_inference_steps": 4,
-                "num_images": 1,
-            },
+        client = genai.Client(api_key=gemini_key)
+        full_prompt = (
+            "rough pencil storyboard sketch, hand-drawn animation frame, "
+            "charcoal lines, minimal shading, monochrome, "
+            "cinematic framing, expressive gestures, "
+            "sketch construction lines visible, "
+            "soft grey watercolor wash background — "
+            + prompt
         )
-        image_url = result["images"][0]["url"]
-        return jsonify({"image_url": image_url})
+        response = client.models.generate_images(
+            model="imagen-3.0-generate-002",
+            prompt=full_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="4:3",
+            ),
+        )
+        image_bytes = response.generated_images[0].image.image_bytes
+        image_b64 = base64.b64encode(image_bytes).decode()
+        return jsonify({"image_url": f"data:image/png;base64,{image_b64}"})
     except Exception as e:
         return jsonify({"error": f"Image generation failed: {str(e)}"}), 500
 
