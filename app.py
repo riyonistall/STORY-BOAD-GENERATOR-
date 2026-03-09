@@ -210,8 +210,8 @@ def generate_image():
         post_resp.raise_for_status()
         task_id = post_resp.json()["data"]["task_id"]
 
-        # Poll until complete (max 60 seconds)
-        for _ in range(30):
+        # Poll until complete (max 90 seconds)
+        for _ in range(45):
             time.sleep(2)
             poll_resp = requests.get(
                 f"https://api.freepik.com/v1/ai/mystic/{task_id}",
@@ -220,9 +220,11 @@ def generate_image():
             )
             poll_resp.raise_for_status()
             result = poll_resp.json()["data"]
-            if result["status"] == "COMPLETED":
-                return jsonify({"image_url": result["generated"][0]})
-            if result["status"] == "FAILED":
+            status = result.get("status")
+            generated = result.get("generated") or []
+            if status == "COMPLETED" and generated:
+                return jsonify({"image_url": generated[0]})
+            if status == "FAILED":
                 return jsonify({"error": "Freepik image generation failed"}), 500
 
         return jsonify({"error": "Image generation timed out"}), 504

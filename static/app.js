@@ -87,12 +87,12 @@ function renderStoryboard(data) {
     return;
   }
 
-  data.shots.forEach((shot) => {
-    storyboardGrid.appendChild(createCard(shot));
+  data.shots.forEach((shot, index) => {
+    storyboardGrid.appendChild(createCard(shot, index));
   });
 }
 
-function createCard(shot) {
+function createCard(shot, index = 0) {
   const card = document.createElement("div");
   card.className = "shot-card";
 
@@ -111,8 +111,8 @@ function createCard(shot) {
   frame.appendChild(frameInner);
   card.appendChild(frame);
 
-  /* Kick off image generation asynchronously */
-  fetchShotImage(shot.sketch_prompt, frame, frameInner, cameraLabel);
+  /* Kick off image generation asynchronously, staggered to avoid rate limits */
+  setTimeout(() => fetchShotImage(shot.sketch_prompt, frame, frameInner, cameraLabel), index * 3000);
 
   /* Body */
   const body = el("div", "card-body");
@@ -150,7 +150,7 @@ function createCard(shot) {
 }
 
 /* ── Image generation ─────────────────────────────────────── */
-async function fetchShotImage(prompt, frame, frameInner, cameraLabel) {
+async function fetchShotImage(prompt, frame, frameInner, cameraLabel, attempt = 0) {
   try {
     const res = await fetch("/generate-image", {
       method: "POST",
@@ -170,8 +170,13 @@ async function fetchShotImage(prompt, frame, frameInner, cameraLabel) {
       frame.classList.add("has-image");
     };
   } catch {
-    cameraLabel.textContent = "Sketch unavailable";
-    frameInner.querySelector(".frame-camera-icon").textContent = "🎥";
+    if (attempt < 2) {
+      cameraLabel.textContent = "Retrying sketch…";
+      setTimeout(() => fetchShotImage(prompt, frame, frameInner, cameraLabel, attempt + 1), 5000);
+    } else {
+      cameraLabel.textContent = "Sketch unavailable";
+      frameInner.querySelector(".frame-camera-icon").textContent = "🎥";
+    }
   }
 }
 
