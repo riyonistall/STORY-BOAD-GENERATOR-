@@ -3,6 +3,7 @@ import anthropic
 import requests
 import time
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pydantic import BaseModel, Field
 from typing import List
 import os
@@ -245,6 +246,28 @@ def download_docx():
     shots = data.get("shots", [])
     image_urls = data.get("image_urls", {})
 
+    # Fetch all images in parallel (max 15s total)
+    def fetch_image(key_url):
+        key, url = key_url
+        try:
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            return key, io.BytesIO(resp.content)
+        except Exception:
+            return key, None
+
+    image_data = {}
+    if image_urls:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(fetch_image, (k, v)): k for k, v in image_urls.items() if v}
+            for future in as_completed(futures, timeout=15):
+                try:
+                    key, stream = future.result()
+                    if stream:
+                        image_data[key] = stream
+                except Exception:
+                    pass
+
     doc = Document()
 
     # Title
@@ -253,17 +276,15 @@ def download_docx():
 
     for shot in shots:
         shot_num = str(shot.get("shot_number", ""))
+        key = int(shot_num) if shot_num.isdigit() else shot_num
 
         # Shot heading
         doc.add_heading(f"Shot {shot_num}  —  {shot.get('shot_type', '')}", level=1)
 
-        # Sketch image
-        url = image_urls.get(int(shot_num) if shot_num.isdigit() else shot_num)
-        if url:
+        # Sketch image (if fetched successfully)
+        img_stream = image_data.get(key)
+        if img_stream:
             try:
-                img_resp = requests.get(url, timeout=20)
-                img_resp.raise_for_status()
-                img_stream = io.BytesIO(img_resp.content)
                 doc.add_picture(img_stream, width=Inches(6))
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
             except Exception:
@@ -282,8 +303,8 @@ def download_docx():
             ("Action",       shot.get("character_action", "")),
             ("Location",     shot.get("environment", "")),
         ]
-        for i, (key, val) in enumerate(rows_data):
-            table.rows[i].cells[0].text = key
+        for i, (key_label, val) in enumerate(rows_data):
+            table.rows[i].cells[0].text = key_label
             table.rows[i].cells[1].text = val
             table.rows[i].cells[0].paragraphs[0].runs[0].bold = True
 

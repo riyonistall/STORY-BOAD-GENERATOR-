@@ -66,6 +66,9 @@ async function generate() {
   hideError();
   emptyState.hidden = true;
   storyboardGrid.innerHTML = "";
+  downloadToolbar.hidden = true;
+  lastStoryboard = null;
+  Object.keys(imageUrls).forEach((k) => delete imageUrls[k]);
 
   try {
     const res = await fetch("/generate", {
