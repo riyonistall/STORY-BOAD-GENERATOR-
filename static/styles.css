@@ -459,6 +459,47 @@ body {
 .copy-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
 .copy-btn.copied { border-color: var(--success); color: var(--success); }
 
+/* ── Download toolbar ────────────────────────────────────── */
+.download-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.download-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.btn-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+  transition: opacity 0.18s, transform 0.12s;
+}
+.btn-download:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-download:active { transform: translateY(0); }
+.btn-download:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.btn-pdf  { background: #c0392b; color: #fff; }
+.btn-docx { background: #2e75b6; color: #fff; }
+.dl-icon  { font-size: 15px; }
+
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 640px) {
   .container { padding: 24px 16px 60px; }
@@ -467,4 +508,48 @@ body {
   .input-footer { flex-wrap: wrap; }
   .btn-generate { width: 100%; justify-content: center; }
   .btn-example  { width: 100%; justify-content: center; text-align: center; }
+  .btn-download { width: 100%; justify-content: center; }
+}
+
+/* ── Print (PDF via window.print) ────────────────────────── */
+@media print {
+  body { background: #fff; color: #111; }
+
+  .header, .film-strip, .input-section,
+  .loading-section, .empty-state,
+  .error-banner, .download-toolbar { display: none !important; }
+
+  .container { max-width: 100%; padding: 0; }
+
+  .storyboard-grid {
+    display: block !important;
+    margin: 0;
+  }
+
+  .shot-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #ccc !important;
+    border-radius: 8px;
+    margin-bottom: 28px;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #111 !important;
+  }
+
+  .card-header {
+    background: #f5f5f5 !important;
+    border-bottom: 1px solid #ddd !important;
+    border-radius: 8px 8px 0 0;
+  }
+  .card-shot-num, .card-shot-type,
+  .card-description, .detail-key, .detail-val,
+  .prompt-heading, .prompt-text,
+  .camera-tag { color: #111 !important; }
+
+  .card-frame { background: #f9f9f9 !important; border: 1px solid #ddd !important; }
+  .frame-sketch-img { width: 100%; height: auto; display: block; }
+
+  .prompt-box { background: #f5f5f5 !important; border: 1px solid #ddd !important; }
+  .copy-btn   { display: none !important; }
 }

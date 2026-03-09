@@ -1,10 +1,14 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import anthropic
 import requests
 import time
+import io
 from pydantic import BaseModel, Field
 from typing import List
 import os
+from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 app = Flask(__name__)
 
@@ -230,6 +234,71 @@ def generate_image():
         return jsonify({"error": "Image generation timed out"}), 504
     except Exception as e:
         return jsonify({"error": f"Image generation failed: {str(e)}"}), 500
+
+
+@app.route("/download/docx", methods=["POST"])
+def download_docx():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request body"}), 400
+
+    shots = data.get("shots", [])
+    image_urls = data.get("image_urls", {})
+
+    doc = Document()
+
+    # Title
+    title = doc.add_heading("Storyboard", 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    for shot in shots:
+        shot_num = str(shot.get("shot_number", ""))
+
+        # Shot heading
+        doc.add_heading(f"Shot {shot_num}  —  {shot.get('shot_type', '')}", level=1)
+
+        # Sketch image
+        url = image_urls.get(int(shot_num) if shot_num.isdigit() else shot_num)
+        if url:
+            try:
+                img_resp = requests.get(url, timeout=20)
+                img_resp.raise_for_status()
+                img_stream = io.BytesIO(img_resp.content)
+                doc.add_picture(img_stream, width=Inches(6))
+                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception:
+                pass
+
+        # Description
+        desc = doc.add_paragraph(shot.get("description", ""))
+        desc.paragraph_format.space_after = Pt(8)
+
+        # Details table
+        table = doc.add_table(rows=4, cols=2)
+        table.style = "Table Grid"
+        rows_data = [
+            ("Camera Type",  shot.get("camera_type", "")),
+            ("Camera Angle", shot.get("camera_angle", "")),
+            ("Action",       shot.get("character_action", "")),
+            ("Location",     shot.get("environment", "")),
+        ]
+        for i, (key, val) in enumerate(rows_data):
+            table.rows[i].cells[0].text = key
+            table.rows[i].cells[1].text = val
+            table.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph()  # spacer between shots
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name="storyboard.docx",
+    )
 
 
 if __name__ == "__main__":

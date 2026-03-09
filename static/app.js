@@ -8,6 +8,13 @@ const emptyState     = document.getElementById("emptyState");
 const storyboardGrid = document.getElementById("storyboardGrid");
 const errorBanner    = document.getElementById("errorBanner");
 const errorText      = document.getElementById("errorText");
+const downloadToolbar = document.getElementById("downloadToolbar");
+const downloadPdfBtn  = document.getElementById("downloadPdfBtn");
+const downloadDocxBtn = document.getElementById("downloadDocxBtn");
+
+/* ── State ────────────────────────────────────────────────── */
+let lastStoryboard = null;   // full shots array
+const imageUrls    = {};     // { shot_number: url }
 
 const MAX_CHARS = 10000;
 
@@ -87,9 +94,14 @@ function renderStoryboard(data) {
     return;
   }
 
+  lastStoryboard = data.shots;
+  Object.keys(imageUrls).forEach((k) => delete imageUrls[k]);
+
   data.shots.forEach((shot, index) => {
     storyboardGrid.appendChild(createCard(shot, index));
   });
+
+  downloadToolbar.hidden = false;
 }
 
 function createCard(shot, index = 0) {
@@ -112,7 +124,7 @@ function createCard(shot, index = 0) {
   card.appendChild(frame);
 
   /* Kick off image generation asynchronously, staggered to avoid rate limits */
-  setTimeout(() => fetchShotImage(shot.sketch_prompt, frame, frameInner, cameraLabel), index * 3000);
+  setTimeout(() => fetchShotImage(shot.sketch_prompt, shot.shot_number, frame, frameInner, cameraLabel), index * 3000);
 
   /* Body */
   const body = el("div", "card-body");
@@ -150,7 +162,7 @@ function createCard(shot, index = 0) {
 }
 
 /* ── Image generation ─────────────────────────────────────── */
-async function fetchShotImage(prompt, frame, frameInner, cameraLabel, attempt = 0) {
+async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt = 0) {
   try {
     const res = await fetch("/generate-image", {
       method: "POST",
@@ -165,6 +177,7 @@ async function fetchShotImage(prompt, frame, frameInner, cameraLabel, attempt = 
     img.alt = "Storyboard sketch";
     img.className = "frame-sketch-img";
     img.onload = () => {
+      imageUrls[shotNumber] = data.image_url;
       frameInner.innerHTML = "";
       frameInner.appendChild(img);
       frame.classList.add("has-image");
@@ -172,13 +185,46 @@ async function fetchShotImage(prompt, frame, frameInner, cameraLabel, attempt = 
   } catch {
     if (attempt < 2) {
       cameraLabel.textContent = "Retrying sketch…";
-      setTimeout(() => fetchShotImage(prompt, frame, frameInner, cameraLabel, attempt + 1), 5000);
+      setTimeout(() => fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt + 1), 5000);
     } else {
       cameraLabel.textContent = "Sketch unavailable";
       frameInner.querySelector(".frame-camera-icon").textContent = "🎥";
     }
   }
 }
+
+/* ── Download handlers ────────────────────────────────────── */
+downloadPdfBtn.addEventListener("click", () => {
+  window.print();
+});
+
+downloadDocxBtn.addEventListener("click", async () => {
+  if (!lastStoryboard) return;
+  downloadDocxBtn.disabled = true;
+  downloadDocxBtn.textContent = "Generating…";
+
+  try {
+    const res = await fetch("/download/docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shots: lastStoryboard, image_urls: imageUrls }),
+    });
+    if (!res.ok) throw new Error("Failed to generate DOCX");
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "storyboard.docx";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showError("DOCX download failed: " + err.message);
+  } finally {
+    downloadDocxBtn.disabled = false;
+    downloadDocxBtn.innerHTML = '<span class="dl-icon">&#128196;</span> Download DOCX';
+  }
+});
 
 /* ── Helpers ──────────────────────────────────────────────── */
 function el(tag, className, text) {
