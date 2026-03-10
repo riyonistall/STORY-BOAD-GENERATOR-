@@ -137,7 +137,9 @@ function createCard(shot, index = 0) {
     const label = el("label", "prompt-editor-label", "Edit sketch prompt");
     const textarea = document.createElement("textarea");
     textarea.className = "prompt-editor-textarea";
-    textarea.value = currentPrompt;
+    /* pick up any inline edits made to the prompt-text element */
+    const promptTextEl = card.querySelector(".prompt-text");
+    textarea.value = (promptTextEl ? promptTextEl.textContent.trim() : null) || currentPrompt;
     textarea.rows = 4;
     textarea.spellcheck = false;
 
@@ -154,6 +156,9 @@ function createCard(shot, index = 0) {
       const newPrompt = textarea.value.trim();
       if (!newPrompt) return;
       currentPrompt = newPrompt;
+      /* sync the visible prompt-text element */
+      const promptTextEl = card.querySelector(".prompt-text");
+      if (promptTextEl) promptTextEl.textContent = newPrompt;
       editor.remove();
       regenBtn.style.display = "";
       frameInner.innerHTML = "";
@@ -189,7 +194,9 @@ function createCard(shot, index = 0) {
   /* Body */
   const body = el("div", "card-body");
 
-  body.appendChild(el("p", "card-description", shot.description));
+  const descEl = el("p", "card-description", shot.description);
+  makeEditable(descEl);
+  body.appendChild(descEl);
 
   /* Camera tags */
   const tags = el("div", "camera-tags");
@@ -208,10 +215,13 @@ function createCard(shot, index = 0) {
   promptBlock.appendChild(el("div", "prompt-heading", "Sketch Generation Prompt"));
 
   const promptBox = el("div", "prompt-box");
-  promptBox.appendChild(el("p", "prompt-text", shot.sketch_prompt));
+  const promptTextEl = el("p", "prompt-text", shot.sketch_prompt);
+  makeEditable(promptTextEl);
+  promptTextEl.addEventListener("blur", () => { currentPrompt = promptTextEl.textContent.trim() || currentPrompt; });
+  promptBox.appendChild(promptTextEl);
 
   const copyBtn = el("button", "copy-btn", "Copy");
-  copyBtn.addEventListener("click", () => copyToClipboard(copyBtn, shot.sketch_prompt));
+  copyBtn.addEventListener("click", () => copyToClipboard(copyBtn, promptTextEl.textContent));
   promptBox.appendChild(copyBtn);
 
   promptBlock.appendChild(promptBox);
@@ -325,8 +335,41 @@ function cameraTag(icon, label) {
 function detailRow(key, value) {
   const row = el("div", "detail-row");
   row.appendChild(el("span", "detail-key", key));
-  row.appendChild(el("span", "detail-val", value));
+  const valEl = el("span", "detail-val", value);
+  makeEditable(valEl);
+  row.appendChild(valEl);
   return row;
+}
+
+/* Makes any element click-to-edit inline */
+function makeEditable(node) {
+  node.classList.add("editable-field");
+  node.setAttribute("title", "Click to edit");
+  let original = "";
+
+  node.addEventListener("click", () => {
+    if (node.contentEditable === "true") return;
+    original = node.textContent;
+    node.contentEditable = "true";
+    node.classList.add("editing");
+    node.focus();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+
+  node.addEventListener("blur", () => {
+    node.contentEditable = "false";
+    node.classList.remove("editing");
+    if (!node.textContent.trim()) node.textContent = original;
+  });
+
+  node.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); node.blur(); }
+    if (e.key === "Escape") { node.textContent = original; node.blur(); }
+  });
 }
 
 async function copyToClipboard(btn, text) {
