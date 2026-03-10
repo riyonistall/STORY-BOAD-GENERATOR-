@@ -1,28 +1,21 @@
 /* ── DOM refs ─────────────────────────────────────────────── */
-const scriptInput    = document.getElementById("scriptInput");
-const charCount      = document.getElementById("charCount");
-const generateBtn    = document.getElementById("generateBtn");
-const exampleBtn     = document.getElementById("exampleBtn");
-const loadingSection = document.getElementById("loadingSection");
-const emptyState     = document.getElementById("emptyState");
-const storyboardGrid = document.getElementById("storyboardGrid");
-const errorBanner    = document.getElementById("errorBanner");
-const errorText      = document.getElementById("errorText");
-const downloadToolbar    = document.getElementById("downloadToolbar");
-const downloadPdfBtn     = document.getElementById("downloadPdfBtn");
-const downloadDocxBtn    = document.getElementById("downloadDocxBtn");
-const generateVideoBtn   = document.getElementById("generateVideoBtn");
+const scriptInput     = document.getElementById("scriptInput");
+const charCount       = document.getElementById("charCount");
+const generateBtn     = document.getElementById("generateBtn");
+const exampleBtn      = document.getElementById("exampleBtn");
+const loadingSection  = document.getElementById("loadingSection");
+const emptyState      = document.getElementById("emptyState");
+const storyboardGrid  = document.getElementById("storyboardGrid");
+const errorBanner     = document.getElementById("errorBanner");
+const errorText       = document.getElementById("errorText");
+const downloadToolbar     = document.getElementById("downloadToolbar");
+const downloadPdfBtn      = document.getElementById("downloadPdfBtn");
+const downloadDocxBtn     = document.getElementById("downloadDocxBtn");
 const exportSlideVideoBtn = document.getElementById("exportSlideVideoBtn");
-const videoSection       = document.getElementById("videoSection");
-const videoGrid          = document.getElementById("videoGrid");
-const playAllBtn         = document.getElementById("playAllBtn");
-const regenAllVideosBtn  = document.getElementById("regenAllVideosBtn");
 
 /* ── State ────────────────────────────────────────────────── */
 let lastStoryboard = null;   // full shots array
 const imageUrls    = {};     // { shot_number: url }
-const videoUrls    = {};     // { shot_number: url }
-let videoCards     = [];     // ordered list of { shot, videoEl } for Play All
 
 const MAX_CHARS = 10000;
 
@@ -75,15 +68,8 @@ async function generate() {
   emptyState.hidden = true;
   storyboardGrid.innerHTML = "";
   downloadToolbar.hidden = true;
-  exportSlideVideoBtn.hidden = true;
-  videoSection.hidden = true;
-  videoGrid.innerHTML = "";
-  playAllBtn.hidden = true;
-  regenAllVideosBtn.hidden = true;
   lastStoryboard = null;
-  videoCards = [];
   Object.keys(imageUrls).forEach((k) => delete imageUrls[k]);
-  Object.keys(videoUrls).forEach((k) => delete videoUrls[k]);
 
   try {
     const res = await fetch("/generate", {
@@ -119,6 +105,7 @@ function renderStoryboard(data) {
     storyboardGrid.appendChild(createCard(shot, index));
   });
 
+  exportSlideVideoBtn.disabled = true;
   downloadToolbar.hidden = false;
 }
 
@@ -152,7 +139,6 @@ function createCard(shot, index = 0) {
     const label = el("label", "prompt-editor-label", "Edit sketch prompt");
     const textarea = document.createElement("textarea");
     textarea.className = "prompt-editor-textarea";
-    /* pick up any inline edits made to the prompt-text element */
     const promptTextEl = card.querySelector(".prompt-text");
     textarea.value = (promptTextEl ? promptTextEl.textContent.trim() : null) || currentPrompt;
     textarea.rows = 4;
@@ -171,7 +157,6 @@ function createCard(shot, index = 0) {
       const newPrompt = textarea.value.trim();
       if (!newPrompt) return;
       currentPrompt = newPrompt;
-      /* sync the visible prompt-text element */
       const promptTextEl = card.querySelector(".prompt-text");
       if (promptTextEl) promptTextEl.textContent = newPrompt;
       editor.remove();
@@ -189,7 +174,7 @@ function createCard(shot, index = 0) {
     editor.appendChild(label);
     editor.appendChild(textarea);
     editor.appendChild(actions);
-    card.appendChild(editor);   // overlay the full card so buttons aren't clipped by the frame
+    card.appendChild(editor);
     textarea.focus();
     textarea.select();
   }
@@ -250,7 +235,6 @@ function createCard(shot, index = 0) {
 async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt = 0, regenBtn = null) {
   if (regenBtn) regenBtn.disabled = true;
   try {
-    // Step 1: submit job — fast, returns task_id immediately
     const submitRes = await fetch("/generate-image/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -259,7 +243,6 @@ async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel
     const submitData = await submitRes.json();
     if (!submitRes.ok || !submitData.task_id) throw new Error(submitData.error || "Submit failed");
 
-    // Step 2: poll status every 3s (each call is fast, no server-side waiting)
     const imageUrl = await pollImageStatus(submitData.task_id, cameraLabel);
 
     const img = document.createElement("img");
@@ -272,7 +255,7 @@ async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel
       frameInner.appendChild(img);
       frame.classList.add("has-image");
       if (regenBtn) regenBtn.disabled = false;
-      exportSlideVideoBtn.hidden = false; // show once at least one image is ready
+      exportSlideVideoBtn.disabled = false; // enable once at least one image is ready
     };
   } catch (err) {
     if (attempt < 2) {
@@ -299,220 +282,6 @@ async function pollImageStatus(taskId, cameraLabel, maxAttempts = 40) {
   }
   throw new Error("Timed out waiting for sketch");
 }
-
-/* ── Video generation ─────────────────────────────────────── */
-generateVideoBtn.addEventListener("click", generateVideos);
-
-async function generateVideos() {
-  if (!lastStoryboard) return;
-
-  const shots = lastStoryboard.filter((s) => imageUrls[s.shot_number]);
-  if (shots.length === 0) {
-    showError("No generated sketches available yet. Wait for the sketches to finish, then try again.");
-    return;
-  }
-
-  /* Reset state */
-  Object.keys(videoUrls).forEach((k) => delete videoUrls[k]);
-  videoCards = [];
-  videoGrid.innerHTML = "";
-  videoSection.hidden = false;
-  playAllBtn.hidden = true;
-  regenAllVideosBtn.hidden = true;
-  generateVideoBtn.disabled = true;
-  generateVideoBtn.innerHTML = '<span class="btn-icon">⏳</span> Generating…';
-  videoSection.scrollIntoView({ behavior: "smooth", block: "start" });
-
-  /* Build video card placeholders in order */
-  shots.forEach((shot) => {
-    const { card, statusLabel } = createVideoCard(shot);
-    videoGrid.appendChild(card);
-    videoCards.push({ shot, card, statusLabel, videoEl: null });
-  });
-
-  /* Submit video jobs — max 3 concurrent per Freepik rate limit */
-  for (let i = 0; i < videoCards.length; i++) {
-    if (i > 0 && i % 3 === 0) await new Promise((r) => setTimeout(r, 2000));
-    fetchShotVideo(videoCards[i]);
-  }
-}
-
-function createVideoCard(shot) {
-  const card = el("div", "video-card");
-
-  /* Header */
-  const header = el("div", "video-card-header");
-  header.appendChild(el("span", "video-card-shot-num", `Shot ${shot.shot_number}`));
-  header.appendChild(el("span", "video-card-shot-type", shot.shot_type));
-  card.appendChild(header);
-
-  /* Video frame (placeholder → actual video) */
-  const frame = el("div", "video-frame");
-  const placeholder = el("div", "video-placeholder");
-  const shimmer = el("div", "video-shimmer");
-  const statusLabel = el("div", "video-status-label", "Animating scene…");
-  placeholder.appendChild(shimmer);
-  placeholder.appendChild(statusLabel);
-  frame.appendChild(placeholder);
-  card.appendChild(frame);
-
-  /* Body */
-  const body = el("div", "video-card-body");
-  body.appendChild(el("p", "video-card-desc", shot.description));
-
-  /* Actions */
-  const actions = el("div", "video-card-actions");
-
-  const dlBtn = el("button", "video-dl-btn", "⬇ Download");
-  dlBtn.disabled = true;
-  dlBtn.addEventListener("click", () => {
-    const url = videoUrls[shot.shot_number];
-    if (!url) return;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `shot-${shot.shot_number}.mp4`;
-    a.target = "_blank";
-    a.click();
-  });
-
-  const regenBtn = el("button", "video-regen-btn", "↺ Regen");
-  regenBtn.disabled = true;
-  regenBtn.addEventListener("click", () => {
-    const entry = videoCards.find((c) => c.shot.shot_number === shot.shot_number);
-    if (!entry) return;
-    regenBtn.disabled = true;
-    dlBtn.disabled = true;
-    /* Reset frame */
-    frame.innerHTML = "";
-    const ph = el("div", "video-placeholder");
-    ph.appendChild(el("div", "video-shimmer"));
-    const lbl = el("div", "video-status-label", "Animating scene…");
-    ph.appendChild(lbl);
-    frame.appendChild(ph);
-    entry.statusLabel = lbl;
-    entry.videoEl = null;
-    delete videoUrls[shot.shot_number];
-    fetchShotVideo(entry);
-  });
-
-  actions.appendChild(dlBtn);
-  actions.appendChild(regenBtn);
-  body.appendChild(actions);
-  card.appendChild(body);
-
-  /* Stash button refs on card for later enabling */
-  card._dlBtn    = dlBtn;
-  card._regenBtn = regenBtn;
-
-  return { card, statusLabel };
-}
-
-async function fetchShotVideo(entry) {
-  const { shot, card } = entry;
-  const imageUrl = imageUrls[shot.shot_number];
-  const prompt   = shot.description;
-
-  entry.statusLabel.textContent = "Submitting…";
-
-  try {
-    /* Submit job */
-    const submitRes = await fetch("/generate-video/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_url: imageUrl, prompt }),
-    });
-    const submitData = await submitRes.json();
-    if (!submitRes.ok || !submitData.task_id) throw new Error(submitData.error || "Submit failed");
-
-    entry.statusLabel.textContent = "Animating scene…";
-
-    /* Poll status (videos take longer — poll every 6s, up to 90 attempts = ~9 min) */
-    const videoUrl = await pollVideoStatus(submitData.task_id, entry.statusLabel);
-
-    videoUrls[shot.shot_number] = videoUrl;
-
-    /* Build video player */
-    const videoEl = document.createElement("video");
-    videoEl.src = videoUrl;
-    videoEl.controls = true;
-    videoEl.loop = false;
-    videoEl.className = "video-player";
-    videoEl.setAttribute("playsinline", "");
-    videoEl.onended = () => playNextVideo(shot.shot_number);
-
-    const frame = card.querySelector(".video-frame");
-    frame.innerHTML = "";
-    frame.appendChild(videoEl);
-    entry.videoEl = videoEl;
-
-    card._dlBtn.disabled    = false;
-    card._regenBtn.disabled = false;
-
-    /* Show Play All / Regen All when all done */
-    checkAllVideosReady();
-  } catch (err) {
-    entry.statusLabel.textContent = err?.message || "Video generation failed";
-    const shimmer = card.querySelector(".video-shimmer");
-    if (shimmer) shimmer.style.display = "none";
-    card._regenBtn.disabled = false;
-    checkAllVideosReady();
-  }
-}
-
-async function pollVideoStatus(taskId, statusLabel, maxAttempts = 90) {
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((r) => setTimeout(r, 6000));
-    const res  = await fetch(`/generate-video/status/${taskId}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Status check failed");
-    if (data.status === "COMPLETED") return data.video_url;
-    if (data.status === "FAILED")    throw new Error("Video generation failed");
-    if (statusLabel) {
-      const mins = Math.floor((i * 6) / 60);
-      const secs = (i * 6) % 60;
-      statusLabel.textContent = `Animating… ${mins}:${String(secs).padStart(2, "0")}`;
-    }
-  }
-  throw new Error("Timed out waiting for video");
-}
-
-function checkAllVideosReady() {
-  const allSettled = videoCards.every(
-    (c) => c.videoEl || (c.statusLabel && !c.statusLabel.textContent.startsWith("Animat") && !c.statusLabel.textContent.startsWith("Submit"))
-  );
-  if (allSettled) {
-    generateVideoBtn.disabled = false;
-    generateVideoBtn.innerHTML = '<span class="btn-icon">&#127909;</span> Generate Video';
-    const hasAny = videoCards.some((c) => c.videoEl);
-    if (hasAny) {
-      playAllBtn.hidden = false;
-      regenAllVideosBtn.hidden = false;
-    }
-  }
-}
-
-function playNextVideo(currentShotNumber) {
-  const idx = videoCards.findIndex((c) => c.shot.shot_number === currentShotNumber);
-  if (idx === -1) return;
-  for (let i = idx + 1; i < videoCards.length; i++) {
-    if (videoCards[i].videoEl) {
-      videoCards[i].videoEl.play();
-      videoCards[i].card.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-  }
-}
-
-playAllBtn.addEventListener("click", () => {
-  const first = videoCards.find((c) => c.videoEl);
-  if (!first) return;
-  /* Pause/reset all then play first */
-  videoCards.forEach((c) => { if (c.videoEl) { c.videoEl.pause(); c.videoEl.currentTime = 0; } });
-  first.videoEl.play();
-  first.card.scrollIntoView({ behavior: "smooth", block: "center" });
-});
-
-regenAllVideosBtn.addEventListener("click", generateVideos);
 
 /* ── Download handlers ────────────────────────────────────── */
 downloadPdfBtn.addEventListener("click", () => {
@@ -547,107 +316,7 @@ downloadDocxBtn.addEventListener("click", async () => {
   }
 });
 
-/* ── Helpers ──────────────────────────────────────────────── */
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function cameraTag(icon, label) {
-  const tag = el("span", "camera-tag");
-  tag.appendChild(el("span", "camera-tag-icon", icon));
-  tag.appendChild(document.createTextNode(label));
-  return tag;
-}
-
-function detailRow(key, value) {
-  const row = el("div", "detail-row");
-  row.appendChild(el("span", "detail-key", key));
-  const valEl = el("span", "detail-val", value);
-  makeEditable(valEl);
-  row.appendChild(valEl);
-  return row;
-}
-
-/* Makes any element click-to-edit inline */
-function makeEditable(node) {
-  node.classList.add("editable-field");
-  node.setAttribute("title", "Click to edit");
-  let original = "";
-
-  node.addEventListener("click", () => {
-    if (node.contentEditable === "true") return;
-    original = node.textContent;
-    node.contentEditable = "true";
-    node.classList.add("editing");
-    node.focus();
-    const range = document.createRange();
-    range.selectNodeContents(node);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-  });
-
-  node.addEventListener("blur", () => {
-    node.contentEditable = "false";
-    node.classList.remove("editing");
-    if (!node.textContent.trim()) node.textContent = original;
-  });
-
-  node.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); node.blur(); }
-    if (e.key === "Escape") { node.textContent = original; node.blur(); }
-  });
-}
-
-async function copyToClipboard(btn, text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    btn.textContent = "✓ Copied";
-    btn.classList.add("copied");
-    setTimeout(() => {
-      btn.textContent = "Copy";
-      btn.classList.remove("copied");
-    }, 2000);
-  } catch {
-    /* Fallback for older browsers */
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.cssText = "position:fixed;opacity:0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    btn.textContent = "✓ Copied";
-    btn.classList.add("copied");
-    setTimeout(() => {
-      btn.textContent = "Copy";
-      btn.classList.remove("copied");
-    }, 2000);
-  }
-}
-
-function setLoading(on) {
-  loadingSection.hidden = !on;
-  generateBtn.disabled  = on;
-  generateBtn.innerHTML = on
-    ? '<span class="btn-icon">⏳</span> Generating…'
-    : '<span class="btn-icon">▶</span> Generate Storyboard';
-}
-
-function showError(msg) {
-  errorText.textContent = msg;
-  errorBanner.hidden = false;
-  errorBanner.scrollIntoView({ behavior: "smooth", block: "center" });
-}
-
-function hideError() {
-  errorBanner.hidden = true;
-}
-
-/* ── Export all frames as one slideshow video ─────────────── */
+/* ── Generate Film (all frames → one video) ───────────────── */
 exportSlideVideoBtn.addEventListener("click", exportFrameVideo);
 
 async function exportFrameVideo() {
@@ -690,11 +359,11 @@ async function exportFrameVideo() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "storyboard.webm";
+    a.download = "storyboard-film.webm";
     a.click();
     URL.revokeObjectURL(url);
     btn.disabled = false;
-    btn.innerHTML = '<span class="dl-icon">&#127909;</span> Export All as Video';
+    btn.innerHTML = '<span class="dl-icon">&#127909;</span> Generate Film';
   };
 
   recorder.start();
@@ -703,26 +372,23 @@ async function exportFrameVideo() {
     const shot = shots[i];
     btn.textContent = `Recording ${i + 1} / ${shots.length}…`;
 
-    // Proxy through our backend to avoid CORS restriction on canvas
     const proxyUrl = `/proxy-image?url=${encodeURIComponent(imageUrls[shot.shot_number])}`;
     let img;
     try {
       img = await loadImage(proxyUrl);
     } catch {
-      continue; // skip frames that fail to load
+      continue;
     }
 
-    // Render each frame for SEC_PER_FRAME seconds
     await new Promise((resolve) => {
       const start = performance.now();
       function draw() {
         const elapsed = performance.now() - start;
 
-        // Dark background
         ctx.fillStyle = "#0b0b12";
         ctx.fillRect(0, 0, W, H);
 
-        // Image — fit inside upper area with letterboxing
+        // Image — letterbox fit in upper area
         const contentH = H - 90;
         const imgAspect = img.width / img.height;
         const areaAspect = (W - 40) / contentH;
@@ -738,16 +404,16 @@ async function exportFrameVideo() {
         ctx.fillStyle = "rgba(0,0,0,0.88)";
         ctx.fillRect(0, H - 90, W, 90);
 
-        // Shot badge
         ctx.fillStyle = "#e8c547";
         ctx.font = "bold 20px 'Courier New', monospace";
         ctx.fillText(`SHOT ${shot.shot_number}`, 18, H - 58);
         ctx.font = "bold 13px sans-serif";
         ctx.fillText(shot.shot_type.toUpperCase(), 18, H - 36);
         ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#888";
         ctx.fillText(`${shot.camera_type}  ·  ${shot.camera_angle}`, 18, H - 16);
 
-        // Description (right column, max 2 lines)
+        // Description — 2 wrapped lines
         ctx.fillStyle = "#cccccc";
         ctx.font = "13px sans-serif";
         const descX = 200, descMaxW = W - descX - 20;
@@ -783,4 +449,96 @@ function loadImage(src) {
     img.onerror = reject;
     img.src = src;
   });
+}
+
+/* ── Helpers ──────────────────────────────────────────────── */
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function cameraTag(icon, label) {
+  const tag = el("span", "camera-tag");
+  tag.appendChild(el("span", "camera-tag-icon", icon));
+  tag.appendChild(document.createTextNode(label));
+  return tag;
+}
+
+function detailRow(key, value) {
+  const row = el("div", "detail-row");
+  row.appendChild(el("span", "detail-key", key));
+  const valEl = el("span", "detail-val", value);
+  makeEditable(valEl);
+  row.appendChild(valEl);
+  return row;
+}
+
+function makeEditable(node) {
+  node.classList.add("editable-field");
+  node.setAttribute("title", "Click to edit");
+  let original = "";
+
+  node.addEventListener("click", () => {
+    if (node.contentEditable === "true") return;
+    original = node.textContent;
+    node.contentEditable = "true";
+    node.classList.add("editing");
+    node.focus();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+
+  node.addEventListener("blur", () => {
+    node.contentEditable = "false";
+    node.classList.remove("editing");
+    if (!node.textContent.trim()) node.textContent = original;
+  });
+
+  node.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); node.blur(); }
+    if (e.key === "Escape") { node.textContent = original; node.blur(); }
+  });
+}
+
+async function copyToClipboard(btn, text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = "✓ Copied";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 2000);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    btn.textContent = "✓ Copied";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 2000);
+  }
+}
+
+function setLoading(on) {
+  loadingSection.hidden = !on;
+  generateBtn.disabled  = on;
+  generateBtn.innerHTML = on
+    ? '<span class="btn-icon">⏳</span> Generating…'
+    : '<span class="btn-icon">▶</span> Generate Storyboard';
+}
+
+function showError(msg) {
+  errorText.textContent = msg;
+  errorBanner.hidden = false;
+  errorBanner.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function hideError() {
+  errorBanner.hidden = true;
 }
