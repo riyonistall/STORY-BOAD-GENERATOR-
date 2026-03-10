@@ -1091,7 +1091,7 @@ body {
 #preloader {
   position: fixed;
   inset: 0;
-  background: #0f0f14;
+  background: #ffffff;
   z-index: 9999;
   display: flex;
   flex-direction: column;
@@ -1100,40 +1100,44 @@ body {
   overflow: hidden;
 }
 #preloader.preloader-fade-out {
-  animation: preloaderFadeOut 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: preloaderFadeOut 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 @keyframes preloaderFadeOut {
-  0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.04); }
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .preloader-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 0 24px;
+  gap: 16px;
+  padding: 0 32px;
   text-align: center;
+  animation: preloaderEntrance 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes preloaderEntrance {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .preloader-eyebrow {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 4px;
+  letter-spacing: 5px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.35);
+  color: #a8a8be;
   user-select: none;
 }
 
 .preloader-text {
   font-size: clamp(36px, 8vw, 96px);
   font-weight: 900;
-  color: #ffffff;
+  color: #0f0f14;
   line-height: 1.05;
   white-space: nowrap;
   user-select: none;
-  /* no transition so changes look instant / kinetic */
   transition: none;
   text-rendering: optimizeLegibility;
 }
@@ -1142,13 +1146,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 12px;
   letter-spacing: 1.5px;
-  color: rgba(255, 255, 255, 0.28);
+  color: #c4c4d0;
   user-select: none;
-  animation: preloaderDots 1.4s ease-in-out infinite;
+  animation: preloaderPulse 1.6s ease-in-out infinite;
 }
-@keyframes preloaderDots {
-  0%, 100% { opacity: 0.28; }
-  50%       { opacity: 0.55; }
+@keyframes preloaderPulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
 }
 
 /* Progress bar at bottom */
@@ -1158,16 +1162,14 @@ body {
   left: 0;
   width: 100%;
   height: 3px;
-  background: rgba(255, 255, 255, 0.10);
+  background: #f0f0f4;
 }
 .preloader-bar-fill {
   height: 100%;
   width: 0%;
-  background: #ffffff;
+  background: #0f0f14;
   border-radius: 0 2px 2px 0;
-  /* smooth fill animation */
   transition: width 0.065s linear;
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
 }
 
 /* ── Print (PDF via window.print) ────────────────────────── */
