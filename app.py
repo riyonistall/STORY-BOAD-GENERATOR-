@@ -4,7 +4,7 @@ import requests
 import time
 import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from typing import List
 import os
 from docx import Document
@@ -152,7 +152,21 @@ def generate():
         if not tool_block:
             return jsonify({"error": "No storyboard was generated."}), 500
 
-        storyboard = Storyboard.model_validate(tool_block.input)
+        try:
+            storyboard = Storyboard.model_validate(tool_block.input)
+        except ValidationError:
+            # Salvage any individually-valid shots (skip empty/incomplete ones)
+            raw_shots = tool_block.input.get("shots", []) if isinstance(tool_block.input, dict) else []
+            valid_shots = []
+            for s in raw_shots:
+                try:
+                    valid_shots.append(StoryboardShot.model_validate(s))
+                except ValidationError:
+                    continue
+            if not valid_shots:
+                return jsonify({"error": "Storyboard generation produced no valid shots. Please try again."}), 500
+            storyboard = Storyboard(shots=valid_shots)
+
         return jsonify(storyboard.model_dump())
 
     except anthropic.AuthenticationError:
