@@ -124,17 +124,60 @@ function createCard(shot, index = 0) {
   const cameraLabel = el("div", "frame-camera-label", "Generating sketch…");
   frameInner.appendChild(cameraLabel);
 
+  /* Track current prompt so edits persist across regen cycles */
+  let currentPrompt = shot.sketch_prompt;
+
+  /* Prompt-editor overlay (shown on regen click) */
+  function showPromptEditor() {
+    if (frame.querySelector(".prompt-editor")) return; // already open
+    regenBtn.style.display = "none";
+
+    const editor = el("div", "prompt-editor");
+
+    const label = el("label", "prompt-editor-label", "Edit sketch prompt");
+    const textarea = document.createElement("textarea");
+    textarea.className = "prompt-editor-textarea";
+    textarea.value = currentPrompt;
+    textarea.rows = 4;
+    textarea.spellcheck = false;
+
+    const actions = el("div", "prompt-editor-actions");
+
+    const cancelBtn = el("button", "prompt-editor-cancel", "Cancel");
+    cancelBtn.addEventListener("click", () => {
+      editor.remove();
+      regenBtn.style.display = "";
+    });
+
+    const goBtn = el("button", "prompt-editor-go", "↺ Regenerate");
+    goBtn.addEventListener("click", () => {
+      const newPrompt = textarea.value.trim();
+      if (!newPrompt) return;
+      currentPrompt = newPrompt;
+      editor.remove();
+      regenBtn.style.display = "";
+      frameInner.innerHTML = "";
+      frameInner.appendChild(el("div", "frame-camera-icon", "⏳"));
+      const newLabel = el("div", "frame-camera-label", "Generating sketch…");
+      frameInner.appendChild(newLabel);
+      frame.classList.remove("has-image");
+      fetchShotImage(currentPrompt, shot.shot_number, frame, frameInner, newLabel, 0, regenBtn);
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(goBtn);
+    editor.appendChild(label);
+    editor.appendChild(textarea);
+    editor.appendChild(actions);
+    frame.appendChild(editor);
+    textarea.focus();
+    textarea.select();
+  }
+
   /* Regenerate button */
   const regenBtn = el("button", "regen-btn", "↺");
-  regenBtn.title = "Regenerate sketch";
-  regenBtn.addEventListener("click", () => {
-    frameInner.innerHTML = "";
-    frameInner.appendChild(el("div", "frame-camera-icon", "⏳"));
-    const newLabel = el("div", "frame-camera-label", "Regenerating…");
-    frameInner.appendChild(newLabel);
-    frame.classList.remove("has-image");
-    fetchShotImage(shot.sketch_prompt, shot.shot_number, frame, frameInner, newLabel, 0, regenBtn);
-  });
+  regenBtn.title = "Edit prompt & regenerate";
+  regenBtn.addEventListener("click", showPromptEditor);
 
   frame.appendChild(frameInner);
   frame.appendChild(regenBtn);
