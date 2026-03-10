@@ -65,6 +65,32 @@ Important Rules:
 """
 
 
+STORYBOARD_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "shots": {
+            "type": "array",
+            "description": "Ordered list of storyboard shots, maximum 12",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "shot_number": {"type": "integer", "description": "Sequential shot number starting from 1"},
+                    "shot_type": {"type": "string", "description": "Shot type label e.g. 'Wide establishing shot', 'Medium shot', 'Close up'"},
+                    "description": {"type": "string", "description": "Clear visual description of what is seen in this shot (2-3 sentences)"},
+                    "camera_type": {"type": "string", "description": "Camera shot size e.g. 'wide shot', 'medium shot', 'close up'"},
+                    "camera_angle": {"type": "string", "description": "Camera angle e.g. 'eye level', 'low angle', 'bird's eye view'"},
+                    "character_action": {"type": "string", "description": "What the character(s) are doing in this shot"},
+                    "environment": {"type": "string", "description": "The setting or environment of the shot"},
+                    "sketch_prompt": {"type": "string", "description": "Detailed image-generation prompt for creating a rough storyboard sketch"}
+                },
+                "required": ["shot_number", "shot_type", "description", "camera_type", "camera_angle", "character_action", "environment", "sketch_prompt"]
+            }
+        }
+    },
+    "required": ["shots"]
+}
+
+
 class StoryboardShot(BaseModel):
     shot_number: int = Field(description="Sequential shot number starting from 1")
     shot_type: str = Field(
@@ -162,13 +188,13 @@ def generate():
 
         response = client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=4096,
+            max_tokens=8192,
             system=SYSTEM_PROMPT,
             tools=[
                 {
                     "name": "create_storyboard",
                     "description": "Create a structured storyboard from the script",
-                    "input_schema": Storyboard.model_json_schema(),
+                    "input_schema": STORYBOARD_INPUT_SCHEMA,
                 }
             ],
             tool_choice={"type": "tool", "name": "create_storyboard"},
@@ -193,14 +219,29 @@ def generate():
         try:
             storyboard = Storyboard.model_validate(tool_block.input)
         except ValidationError:
-            # Salvage any individually-valid shots (skip empty/incomplete ones)
+            # Salvage any individually-valid shots, filling missing fields with safe defaults
             raw_shots = tool_block.input.get("shots", []) if isinstance(tool_block.input, dict) else []
             valid_shots = []
-            for s in raw_shots:
+            for i, s in enumerate(raw_shots):
+                if not isinstance(s, dict):
+                    continue
                 try:
                     valid_shots.append(StoryboardShot.model_validate(s))
                 except ValidationError:
-                    continue
+                    # Fill missing fields with defaults so we don't drop the shot
+                    try:
+                        valid_shots.append(StoryboardShot(
+                            shot_number=int(s.get("shot_number", i + 1)),
+                            shot_type=s.get("shot_type") or "Medium shot",
+                            description=s.get("description") or "",
+                            camera_type=s.get("camera_type") or "medium shot",
+                            camera_angle=s.get("camera_angle") or "eye level",
+                            character_action=s.get("character_action") or "",
+                            environment=s.get("environment") or "",
+                            sketch_prompt=s.get("sketch_prompt") or s.get("description") or "",
+                        ))
+                    except Exception:
+                        continue
             if not valid_shots:
                 return jsonify({"error": "Storyboard generation produced no valid shots. Please try again."}), 500
             storyboard = Storyboard(shots=valid_shots)
