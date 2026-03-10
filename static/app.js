@@ -144,7 +144,7 @@ function createCard(shot, index = 0) {
 
   /* Prompt-editor overlay (shown on regen click) */
   function showPromptEditor() {
-    if (frame.querySelector(".prompt-editor")) return; // already open
+    if (card.querySelector(".prompt-editor")) return; // already open
     regenBtn.style.display = "none";
 
     const editor = el("div", "prompt-editor");
@@ -189,7 +189,7 @@ function createCard(shot, index = 0) {
     editor.appendChild(label);
     editor.appendChild(textarea);
     editor.appendChild(actions);
-    frame.appendChild(editor);
+    card.appendChild(editor);   // overlay the full card so buttons aren't clipped by the frame
     textarea.focus();
     textarea.select();
   }

@@ -245,6 +245,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  position: relative;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .shot-card:hover {
