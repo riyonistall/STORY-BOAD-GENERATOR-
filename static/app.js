@@ -182,35 +182,53 @@ function createCard(shot, index = 0) {
 async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt = 0, regenBtn = null) {
   if (regenBtn) regenBtn.disabled = true;
   try {
-    const res = await fetch("/generate-image", {
+    // Step 1: submit job — fast, returns task_id immediately
+    const submitRes = await fetch("/generate-image/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
-    const data = await res.json();
-    if (!res.ok || !data.image_url) throw new Error(data.error || "No image returned");
+    const submitData = await submitRes.json();
+    if (!submitRes.ok || !submitData.task_id) throw new Error(submitData.error || "Submit failed");
+
+    // Step 2: poll status every 3s (each call is fast, no server-side waiting)
+    const imageUrl = await pollImageStatus(submitData.task_id, cameraLabel);
 
     const img = document.createElement("img");
-    img.src = data.image_url;
+    img.src = imageUrl;
     img.alt = "Storyboard sketch";
     img.className = "frame-sketch-img";
     img.onload = () => {
-      imageUrls[shotNumber] = data.image_url;
+      imageUrls[shotNumber] = imageUrl;
       frameInner.innerHTML = "";
       frameInner.appendChild(img);
       frame.classList.add("has-image");
       if (regenBtn) regenBtn.disabled = false;
     };
-  } catch {
+  } catch (err) {
     if (attempt < 2) {
       cameraLabel.textContent = "Retrying sketch…";
       setTimeout(() => fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt + 1, regenBtn), 5000);
     } else {
       cameraLabel.textContent = "Sketch unavailable";
-      frameInner.querySelector(".frame-camera-icon").textContent = "🎥";
+      const icon = frameInner.querySelector(".frame-camera-icon");
+      if (icon) icon.textContent = "🎥";
       if (regenBtn) regenBtn.disabled = false;
     }
   }
+}
+
+async function pollImageStatus(taskId, cameraLabel, maxAttempts = 40) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const res = await fetch(`/generate-image/status/${taskId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Status check failed");
+    if (data.status === "COMPLETED") return data.image_url;
+    if (data.status === "FAILED") throw new Error("Generation failed");
+    if (cameraLabel) cameraLabel.textContent = "Generating sketch…";
+  }
+  throw new Error("Timed out waiting for sketch");
 }
 
 /* ── Download handlers ────────────────────────────────────── */

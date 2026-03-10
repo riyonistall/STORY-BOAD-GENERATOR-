@@ -173,8 +173,16 @@ def generate():
         return jsonify({"error": f"Error generating storyboard: {str(e)}"}), 500
 
 
-@app.route("/generate-image", methods=["POST"])
-def generate_image():
+def _freepik_headers():
+    key = os.environ.get("FREEPIK_API_KEY")
+    if not key:
+        return None, jsonify({"error": "FREEPIK_API_KEY environment variable is not set"}), 500
+    return {"x-freepik-api-key": key, "Content-Type": "application/json"}, None, None
+
+
+@app.route("/generate-image/submit", methods=["POST"])
+def generate_image_submit():
+    """Submit a generation job to Freepik. Returns task_id immediately."""
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request body"}), 400
@@ -183,15 +191,11 @@ def generate_image():
     if not prompt:
         return jsonify({"error": "prompt is required"}), 400
 
-    freepik_key = os.environ.get("FREEPIK_API_KEY")
-    if not freepik_key:
-        return jsonify({"error": "FREEPIK_API_KEY environment variable is not set"}), 500
+    headers, err_resp, err_code = _freepik_headers()
+    if err_resp:
+        return err_resp, err_code
 
     try:
-        headers = {
-            "x-freepik-api-key": freepik_key,
-            "Content-Type": "application/json",
-        }
         full_prompt = (
             "rough pencil storyboard sketch, hand-drawn animation frame, "
             "charcoal lines, minimal shading, monochrome, "
@@ -200,41 +204,42 @@ def generate_image():
             "soft grey watercolor wash background — "
             + prompt
         )
-        payload = {
-            "prompt": full_prompt,
-            "aspect_ratio": "widescreen_16_9",
-            "resolution": "1k",
-            "model": "fluid",
-        }
-        post_resp = requests.post(
+        resp = requests.post(
             "https://api.freepik.com/v1/ai/mystic",
-            json=payload,
+            json={"prompt": full_prompt, "aspect_ratio": "widescreen_16_9", "resolution": "1k", "model": "fluid"},
             headers=headers,
-            timeout=30,
+            timeout=10,
         )
-        post_resp.raise_for_status()
-        task_id = post_resp.json()["data"]["task_id"]
-
-        # Poll until complete (max 90 seconds)
-        for _ in range(45):
-            time.sleep(2)
-            poll_resp = requests.get(
-                f"https://api.freepik.com/v1/ai/mystic/{task_id}",
-                headers=headers,
-                timeout=15,
-            )
-            poll_resp.raise_for_status()
-            result = poll_resp.json()["data"]
-            status = result.get("status")
-            generated = result.get("generated") or []
-            if status == "COMPLETED" and generated:
-                return jsonify({"image_url": generated[0]})
-            if status == "FAILED":
-                return jsonify({"error": "Freepik image generation failed"}), 500
-
-        return jsonify({"error": "Image generation timed out"}), 504
+        resp.raise_for_status()
+        return jsonify({"task_id": resp.json()["data"]["task_id"]})
     except Exception as e:
-        return jsonify({"error": f"Image generation failed: {str(e)}"}), 500
+        return jsonify({"error": f"Submit failed: {str(e)}"}), 500
+
+
+@app.route("/generate-image/status/<task_id>", methods=["GET"])
+def generate_image_status(task_id):
+    """Check the status of a Freepik generation task. Single fast call."""
+    headers, err_resp, err_code = _freepik_headers()
+    if err_resp:
+        return err_resp, err_code
+
+    try:
+        resp = requests.get(
+            f"https://api.freepik.com/v1/ai/mystic/{task_id}",
+            headers=headers,
+            timeout=8,
+        )
+        resp.raise_for_status()
+        result = resp.json()["data"]
+        status = result.get("status")
+        generated = result.get("generated") or []
+        if status == "COMPLETED" and generated:
+            return jsonify({"status": "COMPLETED", "image_url": generated[0]})
+        if status == "FAILED":
+            return jsonify({"status": "FAILED", "error": "Generation failed"}), 500
+        return jsonify({"status": status})
+    except Exception as e:
+        return jsonify({"error": f"Status check failed: {str(e)}"}), 500
 
 
 @app.route("/download/docx", methods=["POST"])
