@@ -12,6 +12,12 @@ const downloadToolbar     = document.getElementById("downloadToolbar");
 const downloadPdfBtn      = document.getElementById("downloadPdfBtn");
 const downloadDocxBtn     = document.getElementById("downloadDocxBtn");
 const exportSlideVideoBtn = document.getElementById("exportSlideVideoBtn");
+const scriptGenBtn        = document.getElementById("scriptGenBtn");
+const scriptGenModal      = document.getElementById("scriptGenModal");
+const scriptGenClose      = document.getElementById("scriptGenClose");
+const scriptTopicInput    = document.getElementById("scriptTopicInput");
+const topicCharCount      = document.getElementById("topicCharCount");
+const doGenerateScriptBtn = document.getElementById("doGenerateScriptBtn");
 
 /* ── State ────────────────────────────────────────────────── */
 let lastStoryboard = null;   // full shots array
@@ -43,6 +49,55 @@ exampleBtn.addEventListener("click", () => {
   scriptInput.value = EXAMPLE_SCRIPT;
   updateCharCount();
   scriptInput.focus();
+});
+
+/* ── Generate Script Modal ────────────────────────────────── */
+scriptGenBtn.addEventListener("click", () => {
+  scriptGenModal.hidden = false;
+  scriptTopicInput.focus();
+});
+
+scriptGenClose.addEventListener("click", () => {
+  scriptGenModal.hidden = true;
+});
+
+scriptGenModal.addEventListener("click", (e) => {
+  if (e.target === scriptGenModal) scriptGenModal.hidden = true;
+});
+
+scriptTopicInput.addEventListener("input", () => {
+  topicCharCount.textContent = `${scriptTopicInput.value.length} / 500`;
+});
+
+doGenerateScriptBtn.addEventListener("click", async () => {
+  const topic = scriptTopicInput.value.trim();
+  if (!topic) return;
+
+  const originalText = doGenerateScriptBtn.innerHTML;
+  doGenerateScriptBtn.disabled = true;
+  doGenerateScriptBtn.innerHTML = '<span class="btn-icon">⏳</span> Generating…';
+
+  try {
+    const res = await fetch("/generate-script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Script generation failed");
+
+    scriptInput.value = data.script;
+    updateCharCount();
+    scriptGenModal.hidden = true;
+    scriptTopicInput.value = "";
+    topicCharCount.textContent = "0 / 500";
+    scriptInput.focus();
+  } catch (err) {
+    alert("Error: " + err.message);
+  } finally {
+    doGenerateScriptBtn.disabled = false;
+    doGenerateScriptBtn.innerHTML = originalText;
+  }
 });
 
 /* ── Generate ─────────────────────────────────────────────── */

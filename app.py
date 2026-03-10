@@ -99,6 +99,44 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/generate-script", methods=["POST"])
+def generate_script():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request body"}), 400
+
+    topic = data.get("topic", "").strip()
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    if len(topic) > 500:
+        return jsonify({"error": "Topic is too long. Maximum 500 characters."}), 400
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY environment variable is not set"}), 500
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=1500,
+            system=(
+                "You are a professional screenwriter specializing in short films. "
+                "Write a vivid, visual prose script based on the given topic or idea. "
+                "The script should be 250–600 words. Write it as flowing narrative prose — "
+                "describe scenes, actions, environments, and character behaviour visually "
+                "as a director would see them. Avoid heavy dialogue. Focus on what the camera sees. "
+                "Output only the script text, no titles, no extra commentary."
+            ),
+            messages=[{"role": "user", "content": f"Write a short film script about: {topic}"}],
+        )
+        script = message.content[0].text.strip()
+        return jsonify({"script": script})
+    except Exception as e:
+        return jsonify({"error": f"Script generation failed: {str(e)}"}), 500
+
+
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.get_json()

@@ -40,11 +40,37 @@
 
       <div class="input-footer">
         <button class="btn-example" id="exampleBtn">Load Example</button>
+        <button class="btn-script-gen" id="scriptGenBtn">
+          <span class="btn-icon">✨</span> Generate Script
+        </button>
         <button class="btn-generate" id="generateBtn">
           <span class="btn-icon">▶</span> Generate Storyboard
         </button>
       </div>
     </section>
+
+    <!-- Generate Script Modal -->
+    <div class="modal-overlay" id="scriptGenModal" hidden>
+      <div class="modal-box">
+        <div class="modal-header">
+          <span class="modal-title">✨ Generate Script with AI</span>
+          <button class="modal-close" id="scriptGenClose">&times;</button>
+        </div>
+        <p class="modal-desc">Describe your idea, theme, or story concept and Claude will write a short film script for you.</p>
+        <textarea
+          id="scriptTopicInput"
+          class="modal-textarea"
+          placeholder="e.g. A lonely lighthouse keeper discovers a message in a bottle that changes everything…"
+          maxlength="500"
+        ></textarea>
+        <div class="modal-footer">
+          <span class="modal-char-count" id="topicCharCount">0 / 500</span>
+          <button class="btn-generate modal-generate-btn" id="doGenerateScriptBtn">
+            <span class="btn-icon">✨</span> Generate Script
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Error -->
     <div class="error-banner" id="errorBanner" hidden>
