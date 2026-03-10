@@ -210,9 +210,9 @@ async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel
       cameraLabel.textContent = "Retrying sketch…";
       setTimeout(() => fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt + 1, regenBtn), 5000);
     } else {
-      cameraLabel.textContent = "Sketch unavailable";
       const icon = frameInner.querySelector(".frame-camera-icon");
-      if (icon) icon.textContent = "🎥";
+      if (icon) icon.textContent = "⚠️";
+      cameraLabel.textContent = err?.message || "Sketch unavailable";
       if (regenBtn) regenBtn.disabled = false;
     }
   }

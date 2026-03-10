@@ -206,9 +206,9 @@ def generate_image_submit():
         )
         resp = requests.post(
             "https://api.freepik.com/v1/ai/mystic",
-            json={"prompt": full_prompt, "aspect_ratio": "widescreen_16_9", "resolution": "1k", "model": "fluid"},
+            json={"prompt": full_prompt, "aspect_ratio": "widescreen_16_9", "resolution": "1k"},
             headers=headers,
-            timeout=10,
+            timeout=15,
         )
         resp.raise_for_status()
         return jsonify({"task_id": resp.json()["data"]["task_id"]})
