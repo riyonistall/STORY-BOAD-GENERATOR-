@@ -242,6 +242,64 @@ def generate_image_status(task_id):
         return jsonify({"error": f"Status check failed: {str(e)}"}), 500
 
 
+@app.route("/generate-video/submit", methods=["POST"])
+def generate_video_submit():
+    """Submit an image-to-video job to Freepik Kling v2. Returns task_id immediately."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request body"}), 400
+
+    image_url = data.get("image_url", "").strip()
+    prompt = data.get("prompt", "").strip()
+    if not image_url:
+        return jsonify({"error": "image_url is required"}), 400
+
+    headers, err_resp, err_code = _freepik_headers()
+    if err_resp:
+        return err_resp, err_code
+
+    try:
+        payload = {"image": image_url, "duration": "5"}
+        if prompt:
+            payload["prompt"] = prompt[:2500]
+        resp = requests.post(
+            "https://api.freepik.com/v1/ai/image-to-video/kling-v2",
+            json=payload,
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return jsonify({"task_id": resp.json()["data"]["task_id"]})
+    except Exception as e:
+        return jsonify({"error": f"Video submit failed: {str(e)}"}), 500
+
+
+@app.route("/generate-video/status/<task_id>", methods=["GET"])
+def generate_video_status(task_id):
+    """Poll the status of a Freepik image-to-video task."""
+    headers, err_resp, err_code = _freepik_headers()
+    if err_resp:
+        return err_resp, err_code
+
+    try:
+        resp = requests.get(
+            f"https://api.freepik.com/v1/ai/image-to-video/kling-v2/{task_id}",
+            headers=headers,
+            timeout=8,
+        )
+        resp.raise_for_status()
+        result = resp.json()["data"]
+        status = result.get("status")
+        generated = result.get("generated") or []
+        if status == "COMPLETED" and generated:
+            return jsonify({"status": "COMPLETED", "video_url": generated[0]})
+        if status == "FAILED":
+            return jsonify({"status": "FAILED", "error": "Video generation failed"}), 500
+        return jsonify({"status": status})
+    except Exception as e:
+        return jsonify({"error": f"Video status check failed: {str(e)}"}), 500
+
+
 @app.route("/download/docx", methods=["POST"])
 def download_docx():
     data = request.get_json()

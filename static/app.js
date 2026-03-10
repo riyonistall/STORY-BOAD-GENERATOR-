@@ -8,13 +8,20 @@ const emptyState     = document.getElementById("emptyState");
 const storyboardGrid = document.getElementById("storyboardGrid");
 const errorBanner    = document.getElementById("errorBanner");
 const errorText      = document.getElementById("errorText");
-const downloadToolbar = document.getElementById("downloadToolbar");
-const downloadPdfBtn  = document.getElementById("downloadPdfBtn");
-const downloadDocxBtn = document.getElementById("downloadDocxBtn");
+const downloadToolbar    = document.getElementById("downloadToolbar");
+const downloadPdfBtn     = document.getElementById("downloadPdfBtn");
+const downloadDocxBtn    = document.getElementById("downloadDocxBtn");
+const generateVideoBtn   = document.getElementById("generateVideoBtn");
+const videoSection       = document.getElementById("videoSection");
+const videoGrid          = document.getElementById("videoGrid");
+const playAllBtn         = document.getElementById("playAllBtn");
+const regenAllVideosBtn  = document.getElementById("regenAllVideosBtn");
 
 /* ── State ────────────────────────────────────────────────── */
 let lastStoryboard = null;   // full shots array
 const imageUrls    = {};     // { shot_number: url }
+const videoUrls    = {};     // { shot_number: url }
+let videoCards     = [];     // ordered list of { shot, videoEl } for Play All
 
 const MAX_CHARS = 10000;
 
@@ -67,8 +74,14 @@ async function generate() {
   emptyState.hidden = true;
   storyboardGrid.innerHTML = "";
   downloadToolbar.hidden = true;
+  videoSection.hidden = true;
+  videoGrid.innerHTML = "";
+  playAllBtn.hidden = true;
+  regenAllVideosBtn.hidden = true;
   lastStoryboard = null;
+  videoCards = [];
   Object.keys(imageUrls).forEach((k) => delete imageUrls[k]);
+  Object.keys(videoUrls).forEach((k) => delete videoUrls[k]);
 
   try {
     const res = await fetch("/generate", {
@@ -283,6 +296,220 @@ async function pollImageStatus(taskId, cameraLabel, maxAttempts = 40) {
   }
   throw new Error("Timed out waiting for sketch");
 }
+
+/* ── Video generation ─────────────────────────────────────── */
+generateVideoBtn.addEventListener("click", generateVideos);
+
+async function generateVideos() {
+  if (!lastStoryboard) return;
+
+  const shots = lastStoryboard.filter((s) => imageUrls[s.shot_number]);
+  if (shots.length === 0) {
+    showError("No generated sketches available yet. Wait for the sketches to finish, then try again.");
+    return;
+  }
+
+  /* Reset state */
+  Object.keys(videoUrls).forEach((k) => delete videoUrls[k]);
+  videoCards = [];
+  videoGrid.innerHTML = "";
+  videoSection.hidden = false;
+  playAllBtn.hidden = true;
+  regenAllVideosBtn.hidden = true;
+  generateVideoBtn.disabled = true;
+  generateVideoBtn.innerHTML = '<span class="btn-icon">⏳</span> Generating…';
+  videoSection.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  /* Build video card placeholders in order */
+  shots.forEach((shot) => {
+    const { card, statusLabel } = createVideoCard(shot);
+    videoGrid.appendChild(card);
+    videoCards.push({ shot, card, statusLabel, videoEl: null });
+  });
+
+  /* Submit video jobs — max 3 concurrent per Freepik rate limit */
+  for (let i = 0; i < videoCards.length; i++) {
+    if (i > 0 && i % 3 === 0) await new Promise((r) => setTimeout(r, 2000));
+    fetchShotVideo(videoCards[i]);
+  }
+}
+
+function createVideoCard(shot) {
+  const card = el("div", "video-card");
+
+  /* Header */
+  const header = el("div", "video-card-header");
+  header.appendChild(el("span", "video-card-shot-num", `Shot ${shot.shot_number}`));
+  header.appendChild(el("span", "video-card-shot-type", shot.shot_type));
+  card.appendChild(header);
+
+  /* Video frame (placeholder → actual video) */
+  const frame = el("div", "video-frame");
+  const placeholder = el("div", "video-placeholder");
+  const shimmer = el("div", "video-shimmer");
+  const statusLabel = el("div", "video-status-label", "Animating scene…");
+  placeholder.appendChild(shimmer);
+  placeholder.appendChild(statusLabel);
+  frame.appendChild(placeholder);
+  card.appendChild(frame);
+
+  /* Body */
+  const body = el("div", "video-card-body");
+  body.appendChild(el("p", "video-card-desc", shot.description));
+
+  /* Actions */
+  const actions = el("div", "video-card-actions");
+
+  const dlBtn = el("button", "video-dl-btn", "⬇ Download");
+  dlBtn.disabled = true;
+  dlBtn.addEventListener("click", () => {
+    const url = videoUrls[shot.shot_number];
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shot-${shot.shot_number}.mp4`;
+    a.target = "_blank";
+    a.click();
+  });
+
+  const regenBtn = el("button", "video-regen-btn", "↺ Regen");
+  regenBtn.disabled = true;
+  regenBtn.addEventListener("click", () => {
+    const entry = videoCards.find((c) => c.shot.shot_number === shot.shot_number);
+    if (!entry) return;
+    regenBtn.disabled = true;
+    dlBtn.disabled = true;
+    /* Reset frame */
+    frame.innerHTML = "";
+    const ph = el("div", "video-placeholder");
+    ph.appendChild(el("div", "video-shimmer"));
+    const lbl = el("div", "video-status-label", "Animating scene…");
+    ph.appendChild(lbl);
+    frame.appendChild(ph);
+    entry.statusLabel = lbl;
+    entry.videoEl = null;
+    delete videoUrls[shot.shot_number];
+    fetchShotVideo(entry);
+  });
+
+  actions.appendChild(dlBtn);
+  actions.appendChild(regenBtn);
+  body.appendChild(actions);
+  card.appendChild(body);
+
+  /* Stash button refs on card for later enabling */
+  card._dlBtn    = dlBtn;
+  card._regenBtn = regenBtn;
+
+  return { card, statusLabel };
+}
+
+async function fetchShotVideo(entry) {
+  const { shot, card } = entry;
+  const imageUrl = imageUrls[shot.shot_number];
+  const prompt   = shot.description;
+
+  entry.statusLabel.textContent = "Submitting…";
+
+  try {
+    /* Submit job */
+    const submitRes = await fetch("/generate-video/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: imageUrl, prompt }),
+    });
+    const submitData = await submitRes.json();
+    if (!submitRes.ok || !submitData.task_id) throw new Error(submitData.error || "Submit failed");
+
+    entry.statusLabel.textContent = "Animating scene…";
+
+    /* Poll status (videos take longer — poll every 6s, up to 90 attempts = ~9 min) */
+    const videoUrl = await pollVideoStatus(submitData.task_id, entry.statusLabel);
+
+    videoUrls[shot.shot_number] = videoUrl;
+
+    /* Build video player */
+    const videoEl = document.createElement("video");
+    videoEl.src = videoUrl;
+    videoEl.controls = true;
+    videoEl.loop = false;
+    videoEl.className = "video-player";
+    videoEl.setAttribute("playsinline", "");
+    videoEl.onended = () => playNextVideo(shot.shot_number);
+
+    const frame = card.querySelector(".video-frame");
+    frame.innerHTML = "";
+    frame.appendChild(videoEl);
+    entry.videoEl = videoEl;
+
+    card._dlBtn.disabled    = false;
+    card._regenBtn.disabled = false;
+
+    /* Show Play All / Regen All when all done */
+    checkAllVideosReady();
+  } catch (err) {
+    entry.statusLabel.textContent = err?.message || "Video generation failed";
+    const shimmer = card.querySelector(".video-shimmer");
+    if (shimmer) shimmer.style.display = "none";
+    card._regenBtn.disabled = false;
+    checkAllVideosReady();
+  }
+}
+
+async function pollVideoStatus(taskId, statusLabel, maxAttempts = 90) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 6000));
+    const res  = await fetch(`/generate-video/status/${taskId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Status check failed");
+    if (data.status === "COMPLETED") return data.video_url;
+    if (data.status === "FAILED")    throw new Error("Video generation failed");
+    if (statusLabel) {
+      const mins = Math.floor((i * 6) / 60);
+      const secs = (i * 6) % 60;
+      statusLabel.textContent = `Animating… ${mins}:${String(secs).padStart(2, "0")}`;
+    }
+  }
+  throw new Error("Timed out waiting for video");
+}
+
+function checkAllVideosReady() {
+  const allSettled = videoCards.every(
+    (c) => c.videoEl || (c.statusLabel && !c.statusLabel.textContent.startsWith("Animat") && !c.statusLabel.textContent.startsWith("Submit"))
+  );
+  if (allSettled) {
+    generateVideoBtn.disabled = false;
+    generateVideoBtn.innerHTML = '<span class="btn-icon">&#127909;</span> Generate Video';
+    const hasAny = videoCards.some((c) => c.videoEl);
+    if (hasAny) {
+      playAllBtn.hidden = false;
+      regenAllVideosBtn.hidden = false;
+    }
+  }
+}
+
+function playNextVideo(currentShotNumber) {
+  const idx = videoCards.findIndex((c) => c.shot.shot_number === currentShotNumber);
+  if (idx === -1) return;
+  for (let i = idx + 1; i < videoCards.length; i++) {
+    if (videoCards[i].videoEl) {
+      videoCards[i].videoEl.play();
+      videoCards[i].card.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+  }
+}
+
+playAllBtn.addEventListener("click", () => {
+  const first = videoCards.find((c) => c.videoEl);
+  if (!first) return;
+  /* Pause/reset all then play first */
+  videoCards.forEach((c) => { if (c.videoEl) { c.videoEl.pause(); c.videoEl.currentTime = 0; } });
+  first.videoEl.play();
+  first.card.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+regenAllVideosBtn.addEventListener("click", generateVideos);
 
 /* ── Download handlers ────────────────────────────────────── */
 downloadPdfBtn.addEventListener("click", () => {

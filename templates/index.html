@@ -87,7 +87,28 @@
       <button class="btn-download btn-docx" id="downloadDocxBtn">
         <span class="dl-icon">&#128196;</span> Download DOCX
       </button>
+      <button class="btn-generate-video" id="generateVideoBtn">
+        <span class="btn-icon">&#127909;</span> Generate Video
+      </button>
     </div>
+
+    <!-- Video Section -->
+    <section class="video-section" id="videoSection" hidden>
+      <div class="video-section-header">
+        <div class="video-section-title">
+          <span class="video-section-icon">&#127909;</span>
+          <div>
+            <h2 class="video-section-heading">Generated Video Clips</h2>
+            <p class="video-section-sub">Each storyboard shot animated as a 5-second clip</p>
+          </div>
+        </div>
+        <div class="video-section-actions">
+          <button class="btn-play-all" id="playAllBtn" hidden>&#9654; Play All</button>
+          <button class="btn-regen-all" id="regenAllVideosBtn" hidden>↺ Regenerate All</button>
+        </div>
+      </div>
+      <div class="video-grid" id="videoGrid"></div>
+    </section>
 
   </main>
 
