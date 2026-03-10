@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
 import anthropic
 import requests
 import time
@@ -312,6 +312,31 @@ def generate_video_status(task_id):
         return jsonify({"status": status})
     except Exception as e:
         return jsonify({"error": f"Video status check failed: {str(e)}"}), 500
+
+
+@app.route("/proxy-image")
+def proxy_image():
+    """Proxy Freepik image URLs so the client canvas can draw them without CORS errors."""
+    from urllib.parse import urlparse
+    url = request.args.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    # Only allow Freepik-served image URLs for security
+    parsed = urlparse(url)
+    allowed = ("freepik.com", "ik.imagekit.io", "ai-generation.freepik.com")
+    if not any(parsed.netloc.endswith(h) for h in allowed):
+        return jsonify({"error": "URL not allowed"}), 403
+    try:
+        resp = requests.get(url, timeout=20, stream=False)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "image/jpeg")
+        return Response(
+            resp.content,
+            content_type=content_type,
+            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600"},
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/download/docx", methods=["POST"])

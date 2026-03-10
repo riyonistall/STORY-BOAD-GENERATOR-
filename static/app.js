@@ -12,6 +12,7 @@ const downloadToolbar    = document.getElementById("downloadToolbar");
 const downloadPdfBtn     = document.getElementById("downloadPdfBtn");
 const downloadDocxBtn    = document.getElementById("downloadDocxBtn");
 const generateVideoBtn   = document.getElementById("generateVideoBtn");
+const exportSlideVideoBtn = document.getElementById("exportSlideVideoBtn");
 const videoSection       = document.getElementById("videoSection");
 const videoGrid          = document.getElementById("videoGrid");
 const playAllBtn         = document.getElementById("playAllBtn");
@@ -74,6 +75,7 @@ async function generate() {
   emptyState.hidden = true;
   storyboardGrid.innerHTML = "";
   downloadToolbar.hidden = true;
+  exportSlideVideoBtn.hidden = true;
   videoSection.hidden = true;
   videoGrid.innerHTML = "";
   playAllBtn.hidden = true;
@@ -270,6 +272,7 @@ async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel
       frameInner.appendChild(img);
       frame.classList.add("has-image");
       if (regenBtn) regenBtn.disabled = false;
+      exportSlideVideoBtn.hidden = false; // show once at least one image is ready
     };
   } catch (err) {
     if (attempt < 2) {
@@ -642,4 +645,142 @@ function showError(msg) {
 
 function hideError() {
   errorBanner.hidden = true;
+}
+
+/* ── Export all frames as one slideshow video ─────────────── */
+exportSlideVideoBtn.addEventListener("click", exportFrameVideo);
+
+async function exportFrameVideo() {
+  if (!lastStoryboard) return;
+
+  const shots = lastStoryboard
+    .filter((s) => imageUrls[s.shot_number])
+    .sort((a, b) => a.shot_number - b.shot_number);
+
+  if (shots.length === 0) {
+    showError("No generated images available. Wait for sketches to finish first.");
+    return;
+  }
+
+  if (!window.MediaRecorder) {
+    showError("Your browser does not support video recording. Try Chrome or Edge.");
+    return;
+  }
+
+  const btn = exportSlideVideoBtn;
+  btn.disabled = true;
+  btn.textContent = "Preparing…";
+
+  const W = 1280, H = 720, FPS = 30, SEC_PER_FRAME = 4;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+    ? "video/webm;codecs=vp9"
+    : "video/webm";
+
+  const stream = canvas.captureStream(FPS);
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: "video/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "storyboard.webm";
+    a.click();
+    URL.revokeObjectURL(url);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="dl-icon">&#127909;</span> Export All as Video';
+  };
+
+  recorder.start();
+
+  for (let i = 0; i < shots.length; i++) {
+    const shot = shots[i];
+    btn.textContent = `Recording ${i + 1} / ${shots.length}…`;
+
+    // Proxy through our backend to avoid CORS restriction on canvas
+    const proxyUrl = `/proxy-image?url=${encodeURIComponent(imageUrls[shot.shot_number])}`;
+    let img;
+    try {
+      img = await loadImage(proxyUrl);
+    } catch {
+      continue; // skip frames that fail to load
+    }
+
+    // Render each frame for SEC_PER_FRAME seconds
+    await new Promise((resolve) => {
+      const start = performance.now();
+      function draw() {
+        const elapsed = performance.now() - start;
+
+        // Dark background
+        ctx.fillStyle = "#0b0b12";
+        ctx.fillRect(0, 0, W, H);
+
+        // Image — fit inside upper area with letterboxing
+        const contentH = H - 90;
+        const imgAspect = img.width / img.height;
+        const areaAspect = (W - 40) / contentH;
+        let dw, dh;
+        if (imgAspect > areaAspect) {
+          dw = W - 40; dh = dw / imgAspect;
+        } else {
+          dh = contentH - 10; dw = dh * imgAspect;
+        }
+        ctx.drawImage(img, (W - dw) / 2, 10 + (contentH - dh) / 2, dw, dh);
+
+        // Bottom info bar
+        ctx.fillStyle = "rgba(0,0,0,0.88)";
+        ctx.fillRect(0, H - 90, W, 90);
+
+        // Shot badge
+        ctx.fillStyle = "#e8c547";
+        ctx.font = "bold 20px 'Courier New', monospace";
+        ctx.fillText(`SHOT ${shot.shot_number}`, 18, H - 58);
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillText(shot.shot_type.toUpperCase(), 18, H - 36);
+        ctx.font = "12px sans-serif";
+        ctx.fillText(`${shot.camera_type}  ·  ${shot.camera_angle}`, 18, H - 16);
+
+        // Description (right column, max 2 lines)
+        ctx.fillStyle = "#cccccc";
+        ctx.font = "13px sans-serif";
+        const descX = 200, descMaxW = W - descX - 20;
+        const words = shot.description.split(" ");
+        let l1 = "", l2 = "";
+        for (const w of words) {
+          const test = l1 ? l1 + " " + w : w;
+          if (ctx.measureText(test).width <= descMaxW) { l1 = test; }
+          else { l2 += (l2 ? " " : "") + w; }
+        }
+        if (l2.length > 80) l2 = l2.slice(0, 77) + "…";
+        ctx.fillText(l1, descX, H - 52);
+        if (l2) ctx.fillText(l2, descX, H - 32);
+
+        if (elapsed < SEC_PER_FRAME * 1000) {
+          requestAnimationFrame(draw);
+        } else {
+          resolve();
+        }
+      }
+      requestAnimationFrame(draw);
+    });
+  }
+
+  recorder.stop();
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 }
