@@ -135,13 +135,13 @@ function createCard(shot, index = 0) {
     regenBtn.style.display = "none";
 
     const editor = el("div", "prompt-editor");
+    const inner  = el("div", "prompt-editor-inner");
 
     const label = el("label", "prompt-editor-label", "Edit sketch prompt");
     const textarea = document.createElement("textarea");
     textarea.className = "prompt-editor-textarea";
     const promptTextEl = card.querySelector(".prompt-text");
     textarea.value = (promptTextEl ? promptTextEl.textContent.trim() : null) || currentPrompt;
-    textarea.rows = 4;
     textarea.spellcheck = false;
 
     const actions = el("div", "prompt-editor-actions");
@@ -171,9 +171,10 @@ function createCard(shot, index = 0) {
 
     actions.appendChild(cancelBtn);
     actions.appendChild(goBtn);
-    editor.appendChild(label);
-    editor.appendChild(textarea);
-    editor.appendChild(actions);
+    inner.appendChild(label);
+    inner.appendChild(textarea);
+    inner.appendChild(actions);
+    editor.appendChild(inner);
     card.appendChild(editor);
     textarea.focus();
     textarea.select();
