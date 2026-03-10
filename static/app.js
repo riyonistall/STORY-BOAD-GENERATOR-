@@ -123,11 +123,25 @@ function createCard(shot, index = 0) {
   frameInner.appendChild(el("div", "frame-camera-icon", "⏳"));
   const cameraLabel = el("div", "frame-camera-label", "Generating sketch…");
   frameInner.appendChild(cameraLabel);
+
+  /* Regenerate button */
+  const regenBtn = el("button", "regen-btn", "↺");
+  regenBtn.title = "Regenerate sketch";
+  regenBtn.addEventListener("click", () => {
+    frameInner.innerHTML = "";
+    frameInner.appendChild(el("div", "frame-camera-icon", "⏳"));
+    const newLabel = el("div", "frame-camera-label", "Regenerating…");
+    frameInner.appendChild(newLabel);
+    frame.classList.remove("has-image");
+    fetchShotImage(shot.sketch_prompt, shot.shot_number, frame, frameInner, newLabel, 0, regenBtn);
+  });
+
   frame.appendChild(frameInner);
+  frame.appendChild(regenBtn);
   card.appendChild(frame);
 
   /* Kick off image generation asynchronously, staggered to avoid rate limits */
-  setTimeout(() => fetchShotImage(shot.sketch_prompt, shot.shot_number, frame, frameInner, cameraLabel), index * 3000);
+  setTimeout(() => fetchShotImage(shot.sketch_prompt, shot.shot_number, frame, frameInner, cameraLabel, 0, regenBtn), index * 3000);
 
   /* Body */
   const body = el("div", "card-body");
@@ -165,7 +179,8 @@ function createCard(shot, index = 0) {
 }
 
 /* ── Image generation ─────────────────────────────────────── */
-async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt = 0) {
+async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt = 0, regenBtn = null) {
+  if (regenBtn) regenBtn.disabled = true;
   try {
     const res = await fetch("/generate-image", {
       method: "POST",
@@ -184,14 +199,16 @@ async function fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel
       frameInner.innerHTML = "";
       frameInner.appendChild(img);
       frame.classList.add("has-image");
+      if (regenBtn) regenBtn.disabled = false;
     };
   } catch {
     if (attempt < 2) {
       cameraLabel.textContent = "Retrying sketch…";
-      setTimeout(() => fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt + 1), 5000);
+      setTimeout(() => fetchShotImage(prompt, shotNumber, frame, frameInner, cameraLabel, attempt + 1, regenBtn), 5000);
     } else {
       cameraLabel.textContent = "Sketch unavailable";
       frameInner.querySelector(".frame-camera-icon").textContent = "🎥";
+      if (regenBtn) regenBtn.disabled = false;
     }
   }
 }
