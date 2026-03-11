@@ -1138,8 +1138,22 @@ body {
   line-height: 1.05;
   white-space: nowrap;
   user-select: none;
-  transition: none;
   text-rendering: optimizeLegibility;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+#preloaderWord {
+  display: inline-block;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.preloader-static {
+  display: inline-block;
+  /* stays completely still */
 }
 
 .preloader-sub {

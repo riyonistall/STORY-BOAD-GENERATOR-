@@ -16,7 +16,9 @@
   <div id="preloader">
     <div class="preloader-inner">
       <p class="preloader-eyebrow">Welcome to</p>
-      <div class="preloader-text" id="preloaderText">Storyboard Maker</div>
+      <div class="preloader-text" id="preloaderText">
+        <span id="preloaderWord">Storyboard</span><span class="preloader-static"> Maker</span>
+      </div>
       <p class="preloader-sub">Crafting your cinematic experience…</p>
     </div>
     <div class="preloader-bar-wrap">
@@ -150,59 +152,59 @@
   <!-- ── Preloader script ──────────────────────────────────── -->
   <script>
   (function () {
-    var DURATION = 10000;
-    var TICK     = 65;
+    var DURATION  = 7000;
+    var WORD_INTERVAL = 640;
 
-    var fonts = [
-      /* system serifs */
-      'Georgia', 'Palatino', '"Book Antiqua"', '"Times New Roman"',
-      '"Palatino Linotype"', 'Garamond', 'Baskerville',
-      /* system sans */
-      'Impact', '"Arial Black"', 'Verdana', 'Tahoma', '"Trebuchet MS"',
-      '"Gill Sans"', '"Franklin Gothic Medium"',
-      /* system mono / fun */
-      '"Courier New"', '"Comic Sans MS"', 'fantasy', 'cursive',
-      /* google — display / condensed */
-      '"Bebas Neue"', 'Oswald', '"Abril Fatface"', 'Cinzel', 'Righteous',
-      'Monoton', '"Exo 2"', 'Orbitron',
-      /* google — script / handwritten */
-      '"Dancing Script"', '"Permanent Marker"', 'Lobster', 'Pacifico',
-      /* google — literary / editorial */
-      '"Playfair Display"', 'Raleway', '"Special Elite"',
-      /* google — retro / pixel */
-      '"Press Start 2P"',
+    var words = [
+      'Storyboard', 'Film', 'Scene', 'Shot', 'Frame',
+      'Vision', 'Cinematic', 'Story', 'Director', 'Script',
+      'Sequence', 'Visual', 'Narrative', 'Storyboard'
     ];
 
-    var el       = document.getElementById('preloaderText');
-    var overlay  = document.getElementById('preloader');
-    var fill     = document.getElementById('preloaderFill');
-    var elapsed  = 0;
-    var lastIdx  = -1;
+    var wordEl  = document.getElementById('preloaderWord');
+    var overlay = document.getElementById('preloader');
+    var fill    = document.getElementById('preloaderFill');
+    var wIdx    = 0;
+    var start   = Date.now();
 
-    var timer = setInterval(function () {
-      elapsed += TICK;
+    /* progress bar – runs every 50ms */
+    var barTimer = setInterval(function () {
+      var pct = Math.min(((Date.now() - start) / DURATION) * 100, 100);
+      fill.style.width = pct + '%';
+    }, 50);
 
-      /* pick a different font each tick */
-      var idx;
-      do { idx = Math.floor(Math.random() * fonts.length); } while (idx === lastIdx);
-      lastIdx = idx;
-      el.style.fontFamily = fonts[idx];
+    /* word cycling */
+    var wordTimer = setInterval(function () {
+      wIdx = (wIdx + 1) % words.length;
+      /* fade out */
+      wordEl.style.opacity = '0';
+      wordEl.style.transform = 'translateY(-8px)';
+      setTimeout(function () {
+        wordEl.textContent = words[wIdx];
+        /* fade in */
+        wordEl.style.opacity = '1';
+        wordEl.style.transform = 'translateY(0)';
+      }, 200);
+    }, WORD_INTERVAL);
 
-      /* progress bar */
-      fill.style.width = Math.min((elapsed / DURATION) * 100, 100) + '%';
-
-      if (elapsed >= DURATION) {
-        clearInterval(timer);
-        fill.style.width = '100%';
-        /* reset to brand font before fading */
-        el.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-        el.style.fontWeight  = '800';
+    /* finish after DURATION */
+    setTimeout(function () {
+      clearInterval(barTimer);
+      clearInterval(wordTimer);
+      fill.style.width = '100%';
+      /* settle on "Storyboard" before fade */
+      wordEl.style.opacity = '0';
+      wordEl.style.transform = 'translateY(-8px)';
+      setTimeout(function () {
+        wordEl.textContent = 'Storyboard';
+        wordEl.style.opacity = '1';
+        wordEl.style.transform = 'translateY(0)';
         setTimeout(function () {
           overlay.classList.add('preloader-fade-out');
-          setTimeout(function () { overlay.style.display = 'none'; }, 700);
-        }, 120);
-      }
-    }, TICK);
+          setTimeout(function () { overlay.style.display = 'none'; }, 850);
+        }, 300);
+      }, 200);
+    }, DURATION);
   })();
   </script>
 </body>
